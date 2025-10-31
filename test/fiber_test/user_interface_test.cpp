@@ -1,4 +1,6 @@
 #include "fiber.h"
+#include "config_manager.h"
+#include "logger.h"
 #include <iostream>
 
 using namespace fiber;
@@ -30,7 +32,20 @@ void simpleTask3() {
 }
 
 int main() {
+    // 初始化配置管理器和日志系统
+    ConfigManager& config = ConfigManager::Instance();
+    config.init("conf/server.json");
+    
+    Logger& logger = Logger::Instance();
+    logger.Init("test", 
+                config.get<bool>("log.async", true),
+                1000, 
+                8192, 
+                config.get<int>("log.roll_size", 5000000),
+                0); // 0表示启用日志
+    
     std::cout << "=== User-Friendly Fiber Interface Test ===" << std::endl;
+    LOG_INFO("Starting user interface test with logging enabled");
     
     // 用户友好接口：调度器对用户完全透明
     // 用户只需要调用 CreateAndStart 即可

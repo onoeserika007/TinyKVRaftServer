@@ -1,0 +1,11 @@
+{
+  "log": {
+    "visible_level": "info",
+    "async": true,
+    "flush_interval": 3,
+    "roll_size": 5000000,
+    "path": "log",
+    "to_console": true,
+    "to_file": true
+  }
+}

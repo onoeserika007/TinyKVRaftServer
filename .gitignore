@@ -6,3 +6,14 @@ bin
 lib
 docs
 TODO
+
+# 日志文件
+*.log
+log/
+test_*
+core.*
+
+# 临时文件
+*.tmp
+*.swp
+*.bak
