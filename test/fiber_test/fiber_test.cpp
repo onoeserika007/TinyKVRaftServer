@@ -6,22 +6,18 @@ using namespace fiber;
 
 void test_function_A() {
     std::cout << "================ Test function A started ================ " << std::endl;
-    Fiber::YieldCurrent();
+    Fiber::YieldToScheduler();
     std::cout << "================ Test function A resumed ================ " << std::endl;
 }
 
 void test_function_B() {
     std::cout << "================ Test function B started ================ " << std::endl;
-    Fiber::YieldCurrent();
+    Fiber::YieldToScheduler();
     std::cout << "================ Test function B resumed ================ " << std::endl;
 }
 
 int main() {
     std::cout << "=== Fiber Test ===" << std::endl;
-    
-    // 获取主协程
-    Fiber::ptr main_fiber = Fiber::GetCurrentFiber();
-    std::cout << "Main fiber ID: " << main_fiber->getId() << std::endl;
     
     // 创建两个协程
     Fiber::ptr fiber2 = std::make_shared<Fiber>(test_function_A);
