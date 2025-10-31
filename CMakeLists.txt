@@ -12,3 +12,8 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 # 设置项目库文件搜索路径 -L
 link_directories(${PROJECT_SOURCE_DIR}/lib)
 
+# src
+add_subdirectory(src/fiber)
+
+# test
+add_subdirectory(test/fiber_test)
