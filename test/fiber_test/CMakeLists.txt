@@ -26,3 +26,13 @@ target_include_directories(go_style_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/incl
 add_executable(concurrent_go_test concurrent_go_test.cpp)
 target_link_libraries(concurrent_go_test fiber_lib pthread)
 target_include_directories(concurrent_go_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# 无锁Channel测试
+add_executable(lockfree_channel_test lockfree_channel_test.cpp)
+target_link_libraries(lockfree_channel_test fiber_lib)
+target_include_directories(lockfree_channel_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# 无锁WaitQueue测试
+add_executable(lockfree_wait_queue_test lockfree_wait_queue_test.cpp)
+target_link_libraries(lockfree_wait_queue_test fiber_lib)
+target_include_directories(lockfree_wait_queue_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

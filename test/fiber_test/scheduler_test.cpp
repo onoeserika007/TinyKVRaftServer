@@ -7,19 +7,19 @@ using namespace fiber;
 
 void scheduler_test_function_1() {
     std::cout << "================ Test Function 1 Started ================ " << std::endl;
-    Fiber::YieldToScheduler();
+    Fiber::yield();
     std::cout << "================ Test Function 1 Resumed ================ " << std::endl;
 }
 
 void scheduler_test_function_2() {
     std::cout << "================ Test Function 2 Started ================ " << std::endl;
-    Fiber::YieldToScheduler();
+    Fiber::yield();
     std::cout << "================ Test Function 2 Resumed ================ " << std::endl;
 }
 
 void scheduler_test_function_3() {
     std::cout << "================ Test Function 3 Started ================ " << std::endl;
-    Fiber::YieldToScheduler();
+    Fiber::yield();
     std::cout << "================ Test Function 3 Resumed ================ " << std::endl;
 }
 
@@ -36,9 +36,9 @@ int main() {
     scheduler->init();
     
     // 添加协程到调度器
-    auto fiber1 = std::make_shared<Fiber>(scheduler_test_function_1);
-    auto fiber2 = std::make_shared<Fiber>(scheduler_test_function_2);
-    auto fiber3 = std::make_shared<Fiber>(scheduler_test_function_3);
+    auto fiber1 = Fiber::create(scheduler_test_function_1);
+    auto fiber2 = Fiber::create(scheduler_test_function_2);
+    auto fiber3 = Fiber::create(scheduler_test_function_3);
     
     scheduler->schedule(fiber1);
     scheduler->schedule(fiber2);

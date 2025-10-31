@@ -6,13 +6,13 @@ using namespace fiber;
 
 void test_function_A() {
     std::cout << "================ Test function A started ================ " << std::endl;
-    Fiber::YieldToScheduler();
+    Fiber::yield();
     std::cout << "================ Test function A resumed ================ " << std::endl;
 }
 
 void test_function_B() {
     std::cout << "================ Test function B started ================ " << std::endl;
-    Fiber::YieldToScheduler();
+    Fiber::yield();
     std::cout << "================ Test function B resumed ================ " << std::endl;
 }
 
@@ -20,8 +20,8 @@ int main() {
     std::cout << "=== Fiber Test ===" << std::endl;
     
     // 创建两个协程
-    Fiber::ptr fiber2 = std::make_shared<Fiber>(test_function_A);
-    Fiber::ptr fiber3 = std::make_shared<Fiber>(test_function_B);
+    Fiber::ptr fiber2 = Fiber::create(test_function_A);
+    Fiber::ptr fiber3 = Fiber::create(test_function_B);
     
     std::cout << "Fiber A ID: " << fiber2->getId() << ", State: " << static_cast<int>(fiber2->getState()) << std::endl;
     std::cout << "Fiber B ID: " << fiber3->getId() << ", State: " << static_cast<int>(fiber3->getState()) << std::endl;
