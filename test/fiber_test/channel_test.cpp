@@ -35,6 +35,115 @@ void consumer(Channel<int>::ptr ch) {
     LOG_DEBUG("Consumer finished (channel closed)");
 }
 
+// 测试Channel超时功能
+void test_channel_timeout() {
+    LOG_INFO("***************** Test 3: Testing channel timeout operations...");
+    
+    // 测试1: send_timeout - 超时场景
+    LOG_INFO("Test 3.1: send_timeout on full channel (should timeout)");
+    {
+        auto ch = make_channel<int>(1);  // 容量为1
+        ch->send(100);  // 填满channel
+        
+        auto start = std::chrono::steady_clock::now();
+        bool result = ch->send_timeout(200, std::chrono::milliseconds(150));
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        
+        if (!result && elapsed >= 100 && elapsed <= 250) {
+            LOG_INFO("PASS: send_timeout timed out correctly ({}ms)", elapsed);
+        } else {
+            LOG_ERROR("FAIL: send_timeout behavior incorrect (result={}, elapsed={}ms)", result, elapsed);
+        }
+    }
+    
+    // 测试2: send_timeout - 成功发送场景
+    LOG_INFO("Test 3.2: send_timeout with consumer (should succeed)");
+    {
+        auto ch = make_channel<int>(0);  // 无缓冲
+        std::atomic<bool> sent{false};
+        
+        Fiber::go([ch, &sent]() {
+            auto start = std::chrono::steady_clock::now();
+            bool result = ch->send_timeout(42, std::chrono::milliseconds(500));
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start).count();
+            
+            if (result && elapsed < 400) {
+                LOG_INFO("PASS: send_timeout succeeded ({}ms)", elapsed);
+                sent = true;
+            } else {
+                LOG_ERROR("FAIL: send_timeout should succeed (result={}, elapsed={}ms)", result, elapsed);
+            }
+        });
+        
+        Fiber::sleep(200);  // 等待200ms后接收
+        int value;
+        ch->recv(value);
+        
+        Fiber::sleep(200);
+        if (value == 42 && sent) {
+            LOG_INFO("PASS: Value received correctly");
+        } else {
+            LOG_ERROR("FAIL: Value mismatch or send failed");
+        }
+    }
+    
+    // 测试3: recv_timeout - 超时场景
+    LOG_INFO("Test 3.3: recv_timeout on empty channel (should timeout)");
+    {
+        auto ch = make_channel<int>(1);
+        int value = -1;
+        
+        auto start = std::chrono::steady_clock::now();
+        bool result = ch->recv_timeout(value, std::chrono::milliseconds(150));
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        
+        if (!result && elapsed >= 100 && elapsed <= 250 && value == -1) {
+            LOG_INFO("PASS: recv_timeout timed out correctly ({}ms)", elapsed);
+        } else {
+            LOG_ERROR("FAIL: recv_timeout behavior incorrect (result={}, elapsed={}ms, value={})", 
+                     result, elapsed, value);
+        }
+    }
+    
+    // 测试4: recv_timeout - 成功接收场景
+    LOG_INFO("Test 3.4: recv_timeout with producer (should succeed)");
+    {
+        auto ch = make_channel<int>(0);
+        std::atomic<int> received{0};
+        
+        Fiber::go([ch, &received]() {
+            int value = -1;
+            auto start = std::chrono::steady_clock::now();
+            bool result = ch->recv_timeout(value, std::chrono::milliseconds(500));
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start).count();
+            
+            if (result && elapsed < 400 && value == 88) {
+                LOG_INFO("PASS: recv_timeout succeeded ({}ms, value={})", elapsed, value);
+                received = value;
+            } else {
+                LOG_ERROR("FAIL: recv_timeout should succeed (result={}, elapsed={}ms, value={})", 
+                         result, elapsed, value);
+            }
+        });
+        
+        Fiber::sleep(200);  // 等待200ms后发送
+        ch->send(88);
+        
+        Fiber::sleep(200);
+        if (received == 88) {
+            LOG_INFO("PASS: Value matched correctly");
+        } else {
+            LOG_ERROR("FAIL: Value mismatch: {}", received.load());
+        }
+    }
+    
+    LOG_INFO("Channel timeout test completed");
+}
+
 FIBER_MAIN() {
 
     LOG_INFO("================= Channel Communication Test =====================");
@@ -61,8 +170,6 @@ FIBER_MAIN() {
         LOG_INFO("Buffered channel test completed");
         LOG_INFO("");
     }
-    
-    // 等待一下让Channel完全销毁
 
     
     // 测试2: 无缓冲Channel
@@ -86,6 +193,8 @@ FIBER_MAIN() {
         wg.wait();
         LOG_INFO("Unbuffered channel test completed");
     }
+
+    test_channel_timeout();
 
     LOG_INFO("==================== Channel Test Completed ====================");
     

@@ -48,6 +48,70 @@ void test_mutex_basic() {
     }
 }
 
+// 测试FiberCondition超时等待
+void test_condition_timeout() {
+    LOG_INFO("=== Testing FiberCondition Timeout ===");
+    
+    static FiberMutex mtx;
+    static FiberCondition cond;
+    static std::atomic<bool> ready{false};
+    
+    // 测试1：超时场景
+    LOG_INFO("Test 1: Wait timeout (should timeout after 200ms)");
+    Fiber::go([]() {
+        std::unique_lock<FiberMutex> lock(mtx);
+        auto start = std::chrono::steady_clock::now();
+        
+        // 等待200ms，不会被notify，应该超时
+        bool result = cond.wait_for(lock, std::chrono::milliseconds(200));
+        
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        
+        if (!result && elapsed >= 150 && elapsed <= 300) {
+            LOG_INFO("PASS: Condition wait timed out correctly ({}ms)", elapsed);
+        } else {
+            LOG_ERROR("FAIL: Timeout behavior incorrect (result={}, elapsed={}ms)", result, elapsed);
+        }
+    });
+    
+    Fiber::sleep(400);
+    
+    // 测试2：被notify唤醒场景
+    LOG_INFO("Test 2: Wait with notify (should wake up before timeout)");
+    ready.store(false, std::memory_order_release);
+    
+    Fiber::go([]() {
+        std::unique_lock<FiberMutex> lock(mtx);
+        ready.store(true, std::memory_order_release);  // 标记已开始等待
+        auto start = std::chrono::steady_clock::now();
+        
+        // 等待500ms，但会在200ms时被notify
+        bool result = cond.wait_for(lock, std::chrono::milliseconds(500));
+        
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        
+        if (result && elapsed < 400) {
+            LOG_INFO("PASS: Woken up by notify ({}ms)", elapsed);
+        } else {
+            LOG_ERROR("FAIL: Should be woken by notify (result={}, elapsed={}ms)", result, elapsed);
+        }
+    });
+    
+    // 等待fiber进入wait状态
+    while (!ready.load(std::memory_order_acquire)) {
+        Fiber::yield();
+    }
+    Fiber::sleep(100);  // 额外等待确保进入wait
+    
+    // 发送notify
+    cond.notify_one();
+    
+    Fiber::sleep(400);
+    LOG_INFO("Condition timeout test completed");
+}
+
 // 简单的WaitGroup测试
 void test_wait_group() {
     LOG_INFO("=== Testing WaitGroup ===");
@@ -80,10 +144,9 @@ void test_wait_group() {
     LOG_INFO("Main: All workers completed! Total tasks: {}", completed_tasks.load());
 
     if (completed_tasks.load() == num_workers * 3) {
-        LOG_INFO("✓ WaitGroup test PASSED");
-        std::cout << "✓ WaitGroup test PASSED" << std::endl;
+        LOG_INFO("PASS: WaitGroup test");
     } else {
-        LOG_INFO("✗ WaitGroup test FAILED (expected {}, got {})", num_workers * 3, completed_tasks.load());
+        LOG_ERROR("FAIL: WaitGroup test (expected {}, got {})", num_workers * 3, completed_tasks.load());
     }
 }
 
@@ -92,6 +155,7 @@ FIBER_MAIN() {
     try {
         test_wait_group();
         // test_mutex_basic();
+        test_condition_timeout();
 
         LOG_INFO("=== All Tests Completed ===");
 

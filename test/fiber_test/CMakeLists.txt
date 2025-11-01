@@ -22,7 +22,7 @@ add_executable(sync_primitives_test sync_primitives_test.cpp)
 target_link_libraries(sync_primitives_test fiber_lib)
 target_include_directories(sync_primitives_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# Select机制测试
-add_executable(select_test select_test.cpp)
-target_link_libraries(select_test fiber_lib)
-target_include_directories(select_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# 定时器测试
+add_executable(timer_test timer_test.cpp)
+target_link_libraries(timer_test fiber_lib)
+target_include_directories(timer_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
