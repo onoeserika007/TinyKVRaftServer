@@ -26,3 +26,8 @@ target_include_directories(sync_primitives_test PUBLIC ${CMAKE_CURRENT_SOURCE_DI
 add_executable(timer_test timer_test.cpp)
 target_link_libraries(timer_test fiber_lib)
 target_include_directories(timer_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# IO集成测试
+add_executable(io_test io_test.cpp)
+target_link_libraries(io_test fiber_lib)
+target_include_directories(io_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
