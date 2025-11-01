@@ -1,11 +1,11 @@
 {
   "log": {
-    "visible_level": "info",
+    "visible_level": "debug",
     "async": true,
     "flush_interval": 3,
     "roll_size": 5000000,
     "path": "log",
     "to_console": true,
-    "to_file": true
+    "to_file": false
   }
 }
