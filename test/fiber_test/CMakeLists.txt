@@ -31,3 +31,11 @@ target_include_directories(timer_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
 add_executable(io_test io_test.cpp)
 target_link_libraries(io_test fiber_lib)
 target_include_directories(io_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+add_executable(mutex_test mutex_test.cpp)
+target_link_libraries(mutex_test fiber_lib)
+target_include_directories(mutex_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+add_executable(mutex_simple_test mutex_simple_test.cpp)
+target_link_libraries(mutex_simple_test fiber_lib)
+target_include_directories(mutex_simple_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
