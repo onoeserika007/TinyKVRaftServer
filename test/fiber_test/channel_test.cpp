@@ -46,7 +46,7 @@ void test_channel_timeout() {
         ch->send(100);  // 填满channel
         
         auto start = std::chrono::steady_clock::now();
-        bool result = ch->send_timeout(200, std::chrono::milliseconds(150));
+        bool result = ch->send_timeout(200, 150);
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start).count();
         
@@ -65,7 +65,7 @@ void test_channel_timeout() {
         
         Fiber::go([ch, &sent]() {
             auto start = std::chrono::steady_clock::now();
-            bool result = ch->send_timeout(42, std::chrono::milliseconds(500));
+            bool result = ch->send_timeout(42, 500);
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - start).count();
             
@@ -96,7 +96,7 @@ void test_channel_timeout() {
         int value = -1;
         
         auto start = std::chrono::steady_clock::now();
-        bool result = ch->recv_timeout(value, std::chrono::milliseconds(150));
+        bool result = ch->recv_timeout(value, 150);
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start).count();
         
@@ -117,7 +117,7 @@ void test_channel_timeout() {
         Fiber::go([ch, &received]() {
             int value = -1;
             auto start = std::chrono::steady_clock::now();
-            bool result = ch->recv_timeout(value, std::chrono::milliseconds(500));
+            bool result = ch->recv_timeout(value, 500);
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - start).count();
             
