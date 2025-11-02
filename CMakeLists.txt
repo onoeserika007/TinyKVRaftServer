@@ -16,6 +16,7 @@ link_directories(${PROJECT_SOURCE_DIR}/lib)
 
 # third_party libraries
 add_subdirectory(third_party/basic_libs)
+add_subdirectory(third_party/pfr)
 
 # src
 add_subdirectory(src/fiber)

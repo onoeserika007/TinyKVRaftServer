@@ -2,3 +2,6 @@
 	path = third_party/basic_libs
 	url = git@github.com:onoeserika007/basic_libs.git
 	branch = main
+[submodule "third_party/pfr"]
+	path = third_party/pfr
+	url = https://github.com/boostorg/pfr.git

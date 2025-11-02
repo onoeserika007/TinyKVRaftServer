@@ -22,5 +22,6 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
         ${PROJECT_SOURCE_DIR}/src/rpc/include
         ${PROJECT_SOURCE_DIR}/src/fiber/include
         ${PROJECT_SOURCE_DIR}/third_party/basic_libs/include
+        ${PROJECT_SOURCE_DIR}/third_party/pfr/include
     )
 endforeach()

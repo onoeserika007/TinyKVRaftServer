@@ -11,10 +11,12 @@ add_library(rpc_lib ${SRC_LIST})
 target_link_libraries(rpc_lib 
     fiber_lib 
     base_lib
+    Boost::pfr
     Threads::Threads
 )
 target_include_directories(rpc_lib PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/fiber/include
     ${PROJECT_SOURCE_DIR}/third_party/basic_libs/include
+    ${PROJECT_SOURCE_DIR}/third_party/pfr/include
 )

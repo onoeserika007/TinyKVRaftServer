@@ -3,7 +3,6 @@
 #include "buffer.h"
 #include "protocol.h"
 #include "rpc_message.h"
-#include "serializable.h"
 #include "io_fiber.h"
 #include "logger.h"
 #include <functional>
