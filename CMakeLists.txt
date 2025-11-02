@@ -21,7 +21,9 @@ add_subdirectory(third_party/pfr)
 # src
 add_subdirectory(src/fiber)
 add_subdirectory(src/rpc)
+add_subdirectory(src/raft)
 
 # test
 add_subdirectory(test/fiber_test)
 add_subdirectory(test/rpc_test)
+add_subdirectory(test/raft_tester_test)

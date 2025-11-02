@@ -2,6 +2,7 @@
 
 #include "rpc_connection.h"
 #include "rpc_message.h"
+#include "server_config.h"
 #include "fiber.h"
 #include "logger.h"
 #include <unordered_map>
@@ -18,7 +19,11 @@ using RpcHandler = std::function<Json::Value(const Json::Value& params)>;
 
 class RpcServer {
 public:
-    RpcServer() = default;
+    RpcServer() : running_(false), listen_fd_(-1) {}
+    
+    ~RpcServer() {
+        shutdown();
+    }
     
     // 注册RPC方法
     void registerMethod(const std::string& method, RpcHandler handler) {
@@ -26,16 +31,39 @@ public:
         LOG_INFO("RpcServer: registered method '{}'", method);
     }
     
-    // 启动服务器（监听端口）
+    // 监听端口 - 测试
     bool start(uint16_t port) {
-        int listen_fd = createListenSocket(port);
+        ServerConfig config(port);
+        config.listen_addr = "127.0.0.1";
+        return start(config);
+    }
+    
+    // 完整配置 - 生产
+    bool start(const ServerConfig& config) {
+        if (running_) {
+            LOG_WARN("RpcServer: already running");
+            return false;
+        }
+        
+        // 保存配置
+        config_ = config;
+        
+        // 创建监听socket
+        int listen_fd = createListenSocket(config.port);
         if (listen_fd < 0) {
-            LOG_ERROR("RpcServer: failed to create listen socket on port {}", port);
+            LOG_ERROR("RpcServer: failed to create listen socket on port {}", config.port);
             return false;
         }
         
         listen_fd_ = listen_fd;
-        LOG_INFO("RpcServer: listening on port {}", port);
+        port_ = config.port;
+        running_ = true;
+        LOG_INFO("RpcServer: listening on {} port {}", config.listen_addr, port_);
+        
+        // TODO: 如果配置了服务注册，在这里注册到注册中心
+        // if (config_.registry_type != RegistryType::NONE) {
+        //     registerToRegistry();
+        // }
         
         // 启动accept循环
         fiber::Fiber::go([this]() {
@@ -43,6 +71,39 @@ public:
         });
         
         return true;
+    }
+    
+    // 获取实际监听的端口（如果配置为0则自动分配）
+    uint16_t getActualPort() const {
+        return port_;
+    }
+    
+    // 获取服务器配置
+    const ServerConfig& getConfig() const {
+        return config_;
+    }
+    
+    // 关闭服务器
+    void shutdown() {
+        if (!running_) {
+            return;
+        }
+        
+        LOG_INFO("RpcServer: shutting down (port {})", port_);
+        running_ = false;
+        
+        // 关闭监听socket以中断acceptLoop
+        if (listen_fd_ >= 0) {
+            fiber::IO::close(listen_fd_);
+            listen_fd_ = -1;
+        }
+        
+        // 清理处理器
+        handlers_.clear();
+    }
+    
+    bool isRunning() const {
+        return running_;
     }
 
 private:
@@ -76,13 +137,18 @@ private:
     
     // Accept循环
     void acceptLoop() {
-        while (true) {
+        while (running_) {
             sockaddr_in client_addr{};
             socklen_t addr_len = sizeof(client_addr);
             
             auto result = fiber::IO::accept(listen_fd_, (sockaddr*)&client_addr, &addr_len);
             
             if (!result) {
+                // accept失败，可能是因为shutdown关闭了socket
+                if (!running_) {
+                    LOG_INFO("RpcServer: accept loop terminated");
+                    break;
+                }
                 LOG_ERROR("RpcServer: accept failed");
                 continue;
             }
@@ -96,6 +162,7 @@ private:
                 handleConnection(conn);
             });
         }
+        LOG_INFO("RpcServer: accept loop exited");
     }
     
     // 处理单个连接
@@ -146,7 +213,10 @@ private:
     }
 
 private:
-    int listen_fd_ = -1;
+    bool running_;
+    int listen_fd_;
+    uint16_t port_;
+    ServerConfig config_;  // 服务器配置（新增，用于生产模式）
     std::unordered_map<std::string, RpcHandler> handlers_;
 };
 
