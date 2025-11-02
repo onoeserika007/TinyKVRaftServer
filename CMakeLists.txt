@@ -19,6 +19,8 @@ add_subdirectory(third_party/basic_libs)
 
 # src
 add_subdirectory(src/fiber)
+add_subdirectory(src/rpc)
 
 # test
 add_subdirectory(test/fiber_test)
+add_subdirectory(test/rpc_test)
