@@ -174,15 +174,11 @@ private:
     
     // 处理RPC请求
     void handleRequest(RpcConnectionPtr conn, const std::string& payload) {
-        // 解析JSON
-        Json::Value json;
-        if (!JsonCodec::decode(payload, json)) {
-            LOG_ERROR("RpcServer: failed to parse JSON");
+        RpcRequest request;
+        if (!request.deserialize(payload)) {
+            LOG_ERROR("RpcServer: failed to decode request");
             return;
         }
-        
-        // 解析请求
-        RpcRequest request = RpcRequest::fromJson(json);
         
         LOG_DEBUG("RpcServer: received request id={}, method={}", 
                   request.request_id, request.method);
@@ -209,7 +205,7 @@ private:
         }
         
         // 发送响应
-        conn->sendJson(response.toJson());
+        conn->send(response.serialize());
     }
 
 private:

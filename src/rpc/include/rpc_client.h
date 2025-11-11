@@ -12,7 +12,6 @@
 #include <atomic>
 #include <unordered_map>
 #include <memory>
-#include <mutex>
 
 namespace rpc {
 
@@ -109,7 +108,9 @@ public:
         }
         
         // 发送请求
-        if (!conn_->sendJson(request.toJson())) {
+        std::string payload = request.serialize();
+        
+        if (!conn_->send(payload)) {
             std::lock_guard<fiber::FiberMutex> lock(pending_mutex_);
             pending_requests_.erase(request.request_id);
             
@@ -148,15 +149,11 @@ private:
     
     // 处理响应
     void handleResponse(const std::string& payload) {
-        // 解析JSON
-        Json::Value json;
-        if (!JsonCodec::decode(payload, json)) {
-            LOG_ERROR("RpcClient: failed to parse JSON response");
+        RpcResponse response;
+        if (!response.deserialize(payload)) {
+            LOG_ERROR("RpcClient: failed to decode response");
             return;
         }
-        
-        // 解析响应
-        RpcResponse response = RpcResponse::fromJson(json);
         
         LOG_DEBUG("RpcClient: received response id={}, fd={}", response.request_id, conn_->fd());
         

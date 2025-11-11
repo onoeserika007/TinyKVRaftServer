@@ -2,13 +2,20 @@
 #include "rpc_client.h"
 #include "scheduler.h"
 #include "logger.h"
-#include <iostream>
+#include <gtest/gtest.h>
+#include <memory>
 
 using namespace rpc;
 
+// Global server instance for all tests
+static std::shared_ptr<RpcServer> g_server;
+
 // Echo服务：简单返回接收到的消息
 Json::Value echoHandler(const Json::Value& params) {
-    LOG_INFO("Echo handler called with params: {}", JsonCodec::encode(params));
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    std::string params_str = Json::writeString(writer, params);
+    LOG_INFO("Echo handler called with params: {}", params_str);
     return params;  // 直接返回参数
 }
 
@@ -25,85 +32,111 @@ Json::Value addHandler(const Json::Value& params) {
     return response;
 }
 
-void testEchoRpc() {
-    LOG_INFO("=== Test 1: Echo RPC ===");
+// Test Echo RPC
+TEST(RpcTest, EchoMethod) {
+    bool test_done = false;
+    bool test_passed = false;
     
-    // 启动客户端
-    fiber::Fiber::go([]() {
+    fiber::Fiber::go([&]() {
         RpcClient client;
+        ASSERT_TRUE(client.connect("127.0.0.1", 9090));
         
-        if (!client.connect("127.0.0.1", 9090)) {
-            LOG_ERROR("Failed to connect to server");
-            return;
-        }
+        Json::Value params;
+        params["message"] = "Hello, RPC!";
+        params["id"] = 123;
         
-        // 测试Echo
-        {
-            LOG_INFO("****** START: Echo test *********");
-            Json::Value params;
-            params["message"] = "Hello, RPC!";
-            params["id"] = 123;
-            
-            auto resp = client.call("echo", params, 3000);
-            
-            if (resp.success) {
-                LOG_INFO("✓ Echo test PASS: {}", JsonCodec::encode(resp.result));
-            } else {
-                LOG_ERROR("✗ Echo test FAIL: {}", resp.error);
-            }
-        }
+        auto resp = client.call("echo", params, 3000);
         
-        // 测试Add
-        {
-            LOG_INFO("****** START: Add test *********");
-            Json::Value params;
-            params["a"] = 10;
-            params["b"] = 20;
-            
-            auto resp = client.call("add", params, 3000);
-            
-            if (resp.success && resp.result["result"].asInt() == 30) {
-                LOG_INFO("✓ Add test PASS: 10 + 20 = {}", resp.result["result"].asInt());
-            } else {
-                LOG_ERROR("✗ Add test FAIL");
-            }
-        }
-        
-        // 测试不存在的方法
-        {
-            LOG_INFO("****** START: Unknown method test *********");
-            Json::Value params;
-            auto resp = client.call("unknown_method", params, 3000);
-            
-            if (!resp.success) {
-                LOG_INFO("✓ Unknown method test PASS: {}", resp.error);
-            } else {
-                LOG_ERROR("✗ Unknown method test FAIL: should return error");
-            }
-        }
+        EXPECT_TRUE(resp.success);
+        EXPECT_EQ(resp.result["message"].asString(), "Hello, RPC!");
+        EXPECT_EQ(resp.result["id"].asInt(), 123);
         
         client.disconnect();
+        test_passed = true;
+        test_done = true;
     });
     
-    fiber::Fiber::sleep(2000);
+    while (!test_done) {
+        fiber::Fiber::sleep(10);
+    }
+    
+    EXPECT_TRUE(test_passed);
 }
 
-void testConcurrentRpc() {
-    LOG_INFO("=== Test 2: Concurrent RPC ===");
+// Test Add RPC
+TEST(RpcTest, AddMethod) {
+    bool test_done = false;
+    bool test_passed = false;
     
-    // 服务器已经在运行
+    fiber::Fiber::go([&]() {
+        RpcClient client;
+        ASSERT_TRUE(client.connect("127.0.0.1", 9090));
+        
+        Json::Value params;
+        params["a"] = 10;
+        params["b"] = 20;
+        
+        auto resp = client.call("add", params, 3000);
+        
+        EXPECT_TRUE(resp.success);
+        EXPECT_EQ(resp.result["result"].asInt(), 30);
+        
+        client.disconnect();
+        test_passed = true;
+        test_done = true;
+    });
     
-    // 启动多个客户端并发调用
-    for (int i = 0; i < 5; ++i) {
-        fiber::Fiber::go([i]() {
+    while (!test_done) {
+        fiber::Fiber::sleep(10);
+    }
+    
+    EXPECT_TRUE(test_passed);
+}
+
+// Test unknown method
+TEST(RpcTest, UnknownMethod) {
+    bool test_done = false;
+    bool test_passed = false;
+    
+    fiber::Fiber::go([&]() {
+        RpcClient client;
+        ASSERT_TRUE(client.connect("127.0.0.1", 9090));
+        
+        Json::Value params;
+        auto resp = client.call("unknown_method", params, 3000);
+        
+        EXPECT_FALSE(resp.success);
+        EXPECT_FALSE(resp.error.empty());
+        
+        client.disconnect();
+        test_passed = true;
+        test_done = true;
+    });
+    
+    while (!test_done) {
+        fiber::Fiber::sleep(10);
+    }
+    
+    EXPECT_TRUE(test_passed);
+}
+
+// Test concurrent RPC calls
+TEST(RpcTest, ConcurrentCalls) {
+    std::atomic<int> success_count{0};
+    std::atomic<int> completed{0};
+    const int num_clients = 5;
+    const int requests_per_client = 3;
+    
+    for (int i = 0; i < num_clients; ++i) {
+        fiber::Fiber::go([i, &success_count, &completed]() {
             RpcClient client;
             
             if (!client.connect("127.0.0.1", 9090)) {
-                LOG_ERROR("Client {} failed to connect", i);
+                completed++;
                 return;
             }
             
-            for (int j = 0; j < 3; ++j) {
+            for (int j = 0; j < requests_per_client; ++j) {
                 Json::Value params;
                 params["client_id"] = i;
                 params["request_num"] = j;
@@ -111,40 +144,48 @@ void testConcurrentRpc() {
                 
                 auto resp = client.call("echo", params, 3000);
                 
-                if (resp.success) {
-                    LOG_INFO("Client {} request {} PASS", i, j);
-                } else {
-                    LOG_ERROR("Client {} request {} FAIL: {}", i, j, resp.error);
+                if (resp.success && 
+                    resp.result["client_id"].asInt() == i &&
+                    resp.result["request_num"].asInt() == j) {
+                    success_count++;
                 }
                 
                 fiber::Fiber::sleep(50);
             }
             
             client.disconnect();
+            completed++;
         });
         
-        fiber::Fiber::sleep(10);  // 错开连接时间
+        fiber::Fiber::sleep(10);
     }
     
-    fiber::Fiber::sleep(3000);
+    // Wait for all clients to complete
+    while (completed < num_clients) {
+        fiber::Fiber::sleep(100);
+    }
+    
+    EXPECT_EQ(success_count, num_clients * requests_per_client);
 }
 
 FIBER_MAIN() {
-    LOG_INFO("================= RPC Test Starting =====================");
-    // 启动服务器
-    RpcServer server;
-    server.registerMethod("echo", echoHandler);
-    server.registerMethod("add", addHandler);
-    server.start(9090);
-
-    fiber::Fiber::sleep(100);  // 等待服务器启动
-
-    testEchoRpc();
-    testConcurrentRpc();
+    LOG_INFO("=== Starting RPC Tests ===");
     
-    LOG_INFO("==================== RPC Test Completed ====================");
+    // Start RPC server
+    g_server = std::make_shared<RpcServer>();
+    g_server->registerMethod("echo", echoHandler);
+    g_server->registerMethod("add", addHandler);
+    g_server->start(9090);
     
-    fiber::Fiber::sleep(500);
+    fiber::Fiber::sleep(100);  // Wait for server to start
     
-    return 0;
+    // Run gtest
+    ::testing::InitGoogleTest();
+    int result = RUN_ALL_TESTS();
+    
+    LOG_INFO("=== RPC Tests Completed ===");
+    
+    fiber::Fiber::sleep(100);
+    
+    return result;
 }

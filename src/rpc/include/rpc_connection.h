@@ -43,13 +43,7 @@ public:
         
         return true;
     }
-    
-    // 发送JSON消息
-    bool sendJson(const Json::Value& json) {
-        std::string payload = JsonCodec::encode(json);
-        return send(payload);
-    }
-    
+
     // 接收消息循环（在fiber中运行）
     void receiveLoop(MessageCallback callback) {
         char tmp[4096];

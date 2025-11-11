@@ -10,13 +10,16 @@ add_library(raft_lib STATIC ${RAFT_SOURCES})
 target_include_directories(raft_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/fiber/include
+    ${PROJECT_SOURCE_DIR}/src/rpc/include
     ${PROJECT_SOURCE_DIR}/third_party/basic_libs/include
+    ${PROJECT_SOURCE_DIR}/third_party
 )
 
 # 链接依赖库
 target_link_libraries(raft_lib
     fiber_lib
     base_lib
+    rpc_lib
 )
 
 # 设置输出目录
