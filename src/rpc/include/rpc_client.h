@@ -85,20 +85,25 @@ public:
         LOG_INFO("RpcClient: disconnected fd:{}", conn_fd);
     }
     
-    // 同步RPC调用
-    RpcResponse call(const std::string& method, const Json::Value& params, int64_t timeout_ms = 5000) {
+    // 模板化的类型安全RPC调用 - 这是主要接口
+    // InputArgs: 输入参数类型（必须支持 Serializer 特化）
+    // OutputArgs: 输出参数类型（必须支持 Serializer 特化）
+    // 返回: std::optional<std::string> - nullopt表示成功，有值表示错误消息
+    template<typename InputArgs, typename OutputArgs>
+    std::optional<std::string> call(const std::string& method, const InputArgs& input, OutputArgs& output, int64_t timeout_ms = 5000) {
         if (!connected_) {
-            RpcResponse resp;
-            resp.success = false;
-            resp.error = "Not connected";
-            return resp;
+            return "Not connected";
         }
         
         // 构造请求
         RpcRequest request;
         request.request_id = next_request_id_.fetch_add(1);
         request.method = method;
-        request.params = params;
+        
+        // 使用 Encoder 序列化 InputArgs 到字符串
+        auto encoder = Encoder::New();
+        encoder->Encode(input);
+        request.params_data = encoder->Bytes();
         
         // 创建等待响应的Channel
         auto response_chan = fiber::make_channel<RpcResponse>(1);
@@ -113,30 +118,32 @@ public:
         if (!conn_->send(payload)) {
             std::lock_guard<fiber::FiberMutex> lock(pending_mutex_);
             pending_requests_.erase(request.request_id);
-            
-            RpcResponse resp;
-            resp.request_id = request.request_id;
-            resp.success = false;
-            resp.error = "Send failed";
-            return resp;
+            return "Send failed";
         }
         
         LOG_DEBUG("RpcClient: sent request id={}, method={}", request.request_id, method);
         
         // 等待响应（带超时）
         RpcResponse response;
-        if (response_chan->recv_timeout(response, timeout_ms)) {
-            return response;
-        } else {
+        if (!response_chan->recv_timeout(response, timeout_ms)) {
             // 超时
             std::lock_guard<fiber::FiberMutex> lock(pending_mutex_);
             pending_requests_.erase(request.request_id);
-            
-            response.request_id = request.request_id;
-            response.success = false;
-            response.error = "Request timeout";
-            return response;
+            return "Request timeout";
         }
+        
+        // 检查是否成功
+        if (!response.success) {
+            return response.error;
+        }
+        
+        // 使用 Decoder 反序列化 OutputArgs
+        auto decoder = Decoder::New(response.result_data);
+        if (!decoder->Decode(output)) {
+            return "Failed to decode response";
+        }
+        
+        return std::nullopt;  // 成功
     }
 
 private:
@@ -188,43 +195,7 @@ private:
 
 } // namespace rpc
 
-// Include serializer after RpcClient definition
+// Include encoder, serializer and optional after RpcClient definition
+#include "encoder.h"
 #include "rpc_serializer_pfr.h"
 #include <optional>
-
-namespace rpc {
-
-// 类型安全的RPC客户端
-class TypedRpcClient {
-public:
-    TypedRpcClient() = default;
-    
-    bool connect(const std::string& host, uint16_t port, int64_t timeout_ms = 3000) {
-        return client_.connect(host, port, timeout_ms);
-    }
-    
-    void disconnect() {
-        client_.disconnect();
-    }
-    
-    // 统一接口：std::optional<std::string> call(method, input, output)
-    // 返回值：std::nullopt=成功，有值=错误消息
-    template<typename InputArgs, typename OutputArgs>
-    std::optional<std::string> call(const std::string& method, const InputArgs& input, OutputArgs& output, int64_t timeout_ms = 5000) {
-        Json::Value params(Json::arrayValue);
-        params.append(Serializer<InputArgs>::serialize(input));
-        
-        RpcResponse response = client_.call(method, params, timeout_ms);
-        if (!response.success) {
-            return response.error;
-        }
-        
-        output = Serializer<OutputArgs>::deserialize(response.result);
-        return std::nullopt;
-    }
-    
-private:
-    RpcClient client_;
-};
-
-} // namespace rpc

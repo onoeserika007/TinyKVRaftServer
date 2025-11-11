@@ -11,11 +11,19 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <cstring>
+#include <optional>
+#include "encoder.h"
+#include "rpc_serializer_pfr.h"
 
 namespace rpc {
 
-// RPC方法处理器类型：接收请求参数，返回响应结果
-using RpcHandler = std::function<Json::Value(const Json::Value& params)>;
+// 前向声明 Encoder/Decoder
+class Encoder;
+class Decoder;
+
+// RPC方法处理器类型：接收序列化的字符串参数，返回序列化的字符串结果
+// 处理器内部负责反序列化输入、调用业务逻辑、序列化输出
+using RpcHandler = std::function<std::string(const std::string& params_data)>;
 
 class RpcServer {
 public:
@@ -25,11 +33,82 @@ public:
         shutdown();
     }
     
-    // 注册RPC方法
+    // 模板化的类型安全注册方法 - 主要接口
+    // Func: std::optional<std::string> func(const InputArgs&, OutputArgs&)
+    // 返回值：std::nullopt = 成功，有值 = 错误消息
+    template<typename InputArgs, typename OutputArgs>
+    void registerHandler(const std::string& method, 
+                        std::optional<std::string> (*func)(const InputArgs&, OutputArgs&)) {
+        registerMethod(method, [func](const std::string& params_data) -> std::string {
+            // 反序列化输入
+            auto decoder = Decoder::New(params_data);
+            InputArgs input;
+            if (!decoder->Decode(input)) {
+                throw std::runtime_error("Failed to decode input arguments");
+            }
+            
+            // 调用业务逻辑
+            OutputArgs output;
+            auto error = func(input, output);
+            if (error.has_value()) {
+                throw std::runtime_error(error.value());
+            }
+            
+            // 序列化输出
+            auto encoder = Encoder::New();
+            encoder->Encode(output);
+            return encoder->Bytes();
+        });
+    }
+    
+    // Lambda 版本（用于捕获上下文）
+    template<typename Func>
+    void registerHandler(const std::string& method, Func func) {
+        using InputArgs = std::decay_t<std::remove_reference_t<
+            std::tuple_element_t<0, typename function_traits<Func>::args>>>;
+        using OutputArgs = std::decay_t<std::remove_reference_t<
+            std::tuple_element_t<1, typename function_traits<Func>::args>>>;
+        
+        registerMethod(method, [func](const std::string& params_data) -> std::string {
+            // 反序列化输入
+            auto decoder = Decoder::New(params_data);
+            InputArgs input;
+            if (!decoder->Decode(input)) {
+                throw std::runtime_error("Failed to decode input arguments");
+            }
+            
+            // 调用业务逻辑
+            OutputArgs output;
+            auto error = func(input, output);
+            if (error.has_value()) {
+                throw std::runtime_error(error.value());
+            }
+            
+            // 序列化输出
+            auto encoder = Encoder::New();
+            encoder->Encode(output);
+            return encoder->Bytes();
+        });
+    }
+
+private:
+    // 函数萃取traits（用于lambda推导类型）
+    template<typename T>
+    struct function_traits : public function_traits<decltype(&T::operator())> {};
+    
+    template<typename C, typename Ret, typename... Args>
+    struct function_traits<Ret(C::*)(Args...) const> {
+        using result_type = Ret;
+        using args = std::tuple<Args...>;
+    };
+    
+    // 内部注册方法（字符串 -> 字符串）
     void registerMethod(const std::string& method, RpcHandler handler) {
         handlers_[method] = std::move(handler);
         LOG_INFO("RpcServer: registered method '{}'", method);
     }
+
+public:
     
     // 监听端口 - 测试
     bool start(uint16_t port) {
@@ -64,10 +143,12 @@ public:
         // if (config_.registry_type != RegistryType::NONE) {
         //     registerToRegistry();
         // }
-        
+
+        wg_.add(1);
         // 启动accept循环
         fiber::Fiber::go([this]() {
             acceptLoop();
+            wg_.done();
         });
         
         return true;
@@ -100,6 +181,9 @@ public:
         
         // 清理处理器
         handlers_.clear();
+
+        // 等待监听循环退出
+        wg_.wait();
     }
     
     bool isRunning() const {
@@ -154,6 +238,9 @@ private:
             }
             
             int client_fd = *result;
+            if (client_fd < 0) {
+                continue;
+            }
             LOG_INFO("RpcServer: accepted client connection (fd={})", client_fd);
             
             // 为每个客户端启动一个fiber处理连接
@@ -194,8 +281,8 @@ private:
             LOG_ERROR("RpcServer: method '{}' not found", request.method);
         } else {
             try {
-                // 调用处理器
-                response.result = it->second(request.params);
+                // 调用处理器（string -> string）
+                response.result_data = it->second(request.params_data);
                 response.success = true;
             } catch (const std::exception& e) {
                 response.success = false;
@@ -214,68 +301,8 @@ private:
     uint16_t port_;
     ServerConfig config_;  // 服务器配置（新增，用于生产模式）
     std::unordered_map<std::string, RpcHandler> handlers_;
+    fiber::WaitGroup wg_;
 };
 
 } // namespace rpc
 
-// Include serializer after RpcServer definition
-#include "rpc_serializer_pfr.h"
-#include <optional>
-
-namespace rpc {
-
-// 类型安全的RPC服务器
-class TypedRpcServer : public RpcServer {
-public:
-    TypedRpcServer() = default;
-    
-    // 注册处理器：std::optional<std::string> func(const Input&, Output&)
-    // 返回值：std::nullopt = 成功，有值 = 错误消息
-    template<typename InputArgs, typename OutputArgs>
-    void registerHandler(const std::string& method, 
-                        std::optional<std::string> (*func)(const InputArgs&, OutputArgs&)) {
-        RpcServer::registerMethod(method, [func](const Json::Value& params) -> Json::Value {
-            InputArgs input = Serializer<InputArgs>::deserialize(params[0]);
-            OutputArgs output;
-            
-            auto error = func(input, output);
-            if (error.has_value()) {
-                throw std::runtime_error(error.value());
-            }
-            return Serializer<OutputArgs>::serialize(output);
-        });
-    }
-    
-    // 注册lambda：std::optional<std::string> func(const Input&, Output&)
-    template<typename Func>
-    void registerHandler(const std::string& method, Func func) {
-        RpcServer::registerMethod(method, [func](const Json::Value& params) -> Json::Value {
-            using InputArgs = std::decay_t<std::remove_reference_t<
-                std::tuple_element_t<0, typename function_traits<Func>::args>>>;
-            using OutputArgs = std::decay_t<std::remove_reference_t<
-                std::tuple_element_t<1, typename function_traits<Func>::args>>>;
-            
-            InputArgs input = Serializer<InputArgs>::deserialize(params[0]);
-            OutputArgs output;
-            
-            auto error = func(input, output);
-            if (error.has_value()) {
-                throw std::runtime_error(error.value());
-            }
-            return Serializer<OutputArgs>::serialize(output);
-        });
-    }
-    
-private:
-    // 函数萃取traits（用于lambda）
-    template<typename T>
-    struct function_traits : public function_traits<decltype(&T::operator())> {};
-    
-    template<typename C, typename Ret, typename... Args>
-    struct function_traits<Ret(C::*)(Args...) const> {
-        using result_type = Ret;
-        using args = std::tuple<Args...>;
-    };
-};
-
-} // namespace rpc

@@ -28,6 +28,17 @@ struct Serializer<int> {
     }
 };
 
+// uint8_t
+template<>
+struct Serializer<uint8_t> {
+    static Json::Value serialize(uint8_t value) {
+        return Json::Value(static_cast<unsigned int>(value));
+    }
+    static uint8_t deserialize(const Json::Value& json) {
+        return static_cast<uint8_t>(json.asUInt());
+    }
+};
+
 // uint64_t
 template<>
 struct Serializer<uint64_t> {

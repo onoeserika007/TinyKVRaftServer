@@ -1,5 +1,5 @@
-#include "rpc_server_typed_pfr.h"
-#include "rpc_client_typed_pfr.h"
+#include "rpc_server.h"
+#include "rpc_client.h"
 #include "scheduler.h"
 #include "fiber.h"
 #include "logger.h"
@@ -176,7 +176,7 @@ std::optional<std::string> processComplexContainer(const ComplexContainer& input
     return std::nullopt;
 }
 
-void setupServer(rpc::TypedRpcServer& server) {
+void setupServer(rpc::RpcServer& server) {
     server.registerHandler("divide", divide);
     server.registerHandler("cartesianToPolar", cartesianToPolar);
     server.registerHandler("analyzeRectangle", analyzeRectangle);
@@ -190,16 +190,17 @@ void setupServer(rpc::TypedRpcServer& server) {
 // ============================================================================
 
 void testTypedRpcWithRefOutput() {
-    rpc::TypedRpcServer server;
+    rpc::RpcServer server;
     setupServer(server);
     
     server.start(9095);
     LOG_INFO("=== Typed RPC Server (with ref output) started on port 9095 ===");
     
-    fiber::Fiber::sleep(100);
+    fiber::WaitGroup wg;
+    wg.add(1);
     
-    fiber::Fiber::go([]() {
-        rpc::TypedRpcClient client;
+    fiber::Fiber::go([&wg]() {
+        rpc::RpcClient client;
         
         if (!client.connect("127.0.0.1", 9095)) {
             LOG_ERROR("Client: failed to connect");
@@ -370,15 +371,15 @@ void testTypedRpcWithRefOutput() {
         }
         
         client.disconnect();
+        wg.done();
     });
     
-    fiber::Fiber::sleep(2000);
+    wg.wait();
 }
 
 FIBER_MAIN() {
     LOG_INFO("================= Typed RPC with Reference Output Test =====================\n");
     testTypedRpcWithRefOutput();
     LOG_INFO("\n==================== Test Completed ====================");
-    fiber::Fiber::sleep(500);
     return 0;
 }

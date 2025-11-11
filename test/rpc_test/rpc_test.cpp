@@ -10,26 +10,39 @@ using namespace rpc;
 // Global server instance for all tests
 static std::shared_ptr<RpcServer> g_server;
 
+// 定义请求和响应结构体
+struct EchoRequest {
+    std::string message;
+    int id;
+};
+
+struct EchoResponse {
+    std::string message;
+    int id;
+};
+
+struct AddRequest {
+    int a;
+    int b;
+};
+
+struct AddResponse {
+    int result;
+};
+
 // Echo服务：简单返回接收到的消息
-Json::Value echoHandler(const Json::Value& params) {
-    Json::StreamWriterBuilder writer;
-    writer["indentation"] = "";
-    std::string params_str = Json::writeString(writer, params);
-    LOG_INFO("Echo handler called with params: {}", params_str);
-    return params;  // 直接返回参数
+std::optional<std::string> echoHandler(const EchoRequest& req, EchoResponse& resp) {
+    LOG_INFO("Echo handler called with message: {}, id: {}", req.message, req.id);
+    resp.message = req.message;
+    resp.id = req.id;
+    return std::nullopt;  // 成功
 }
 
 // Add服务：计算两个数的和
-Json::Value addHandler(const Json::Value& params) {
-    int a = params["a"].asInt();
-    int b = params["b"].asInt();
-    int result = a + b;
-    
-    Json::Value response;
-    response["result"] = result;
-    
-    LOG_INFO("Add handler: {} + {} = {}", a, b, result);
-    return response;
+std::optional<std::string> addHandler(const AddRequest& req, AddResponse& resp) {
+    resp.result = req.a + req.b;
+    LOG_INFO("Add handler: {} + {} = {}", req.a, req.b, resp.result);
+    return std::nullopt;  // 成功
 }
 
 // Test Echo RPC
@@ -41,15 +54,16 @@ TEST(RpcTest, EchoMethod) {
         RpcClient client;
         ASSERT_TRUE(client.connect("127.0.0.1", 9090));
         
-        Json::Value params;
-        params["message"] = "Hello, RPC!";
-        params["id"] = 123;
+        EchoRequest req;
+        req.message = "Hello, RPC!";
+        req.id = 123;
         
-        auto resp = client.call("echo", params, 3000);
+        EchoResponse resp;
+        auto error = client.call("echo", req, resp, 3000);
         
-        EXPECT_TRUE(resp.success);
-        EXPECT_EQ(resp.result["message"].asString(), "Hello, RPC!");
-        EXPECT_EQ(resp.result["id"].asInt(), 123);
+        EXPECT_FALSE(error.has_value()) << "Error: " << error.value_or("");
+        EXPECT_EQ(resp.message, "Hello, RPC!");
+        EXPECT_EQ(resp.id, 123);
         
         client.disconnect();
         test_passed = true;
@@ -72,14 +86,15 @@ TEST(RpcTest, AddMethod) {
         RpcClient client;
         ASSERT_TRUE(client.connect("127.0.0.1", 9090));
         
-        Json::Value params;
-        params["a"] = 10;
-        params["b"] = 20;
+        AddRequest req;
+        req.a = 10;
+        req.b = 20;
         
-        auto resp = client.call("add", params, 3000);
+        AddResponse resp;
+        auto error = client.call("add", req, resp, 3000);
         
-        EXPECT_TRUE(resp.success);
-        EXPECT_EQ(resp.result["result"].asInt(), 30);
+        EXPECT_FALSE(error.has_value()) << "Error: " << error.value_or("");
+        EXPECT_EQ(resp.result, 30);
         
         client.disconnect();
         test_passed = true;
@@ -102,11 +117,15 @@ TEST(RpcTest, UnknownMethod) {
         RpcClient client;
         ASSERT_TRUE(client.connect("127.0.0.1", 9090));
         
-        Json::Value params;
-        auto resp = client.call("unknown_method", params, 3000);
+        EchoRequest req;
+        req.message = "test";
+        req.id = 1;
         
-        EXPECT_FALSE(resp.success);
-        EXPECT_FALSE(resp.error.empty());
+        EchoResponse resp;
+        auto error = client.call("unknown_method", req, resp, 3000);
+        
+        EXPECT_TRUE(error.has_value());
+        EXPECT_FALSE(error.value().empty());
         
         client.disconnect();
         test_passed = true;
@@ -120,15 +139,43 @@ TEST(RpcTest, UnknownMethod) {
     EXPECT_TRUE(test_passed);
 }
 
+// Request/Response for concurrent test
+struct ConcurrentRequest {
+    int client_id;
+    int request_num;
+    std::string message;
+};
+
+struct ConcurrentResponse {
+    int client_id;
+    int request_num;
+    std::string message;
+};
+
+// Handler for concurrent test
+std::optional<std::string> concurrentHandler(const ConcurrentRequest& req, ConcurrentResponse& resp) {
+    resp.client_id = req.client_id;
+    resp.request_num = req.request_num;
+    resp.message = req.message;
+    return std::nullopt;
+}
+
 // Test concurrent RPC calls
 TEST(RpcTest, ConcurrentCalls) {
+    // Register concurrent handler
+    g_server->registerHandler("concurrent", concurrentHandler);
+    fiber::Fiber::sleep(50);
+    
     std::atomic<int> success_count{0};
     std::atomic<int> completed{0};
     const int num_clients = 5;
     const int requests_per_client = 3;
+
+    fiber::WaitGroup wg;
+    wg.add(num_clients * requests_per_client);
     
     for (int i = 0; i < num_clients; ++i) {
-        fiber::Fiber::go([i, &success_count, &completed]() {
+        fiber::Fiber::go([i, &success_count, &completed, &wg]() {
             RpcClient client;
             
             if (!client.connect("127.0.0.1", 9090)) {
@@ -137,17 +184,20 @@ TEST(RpcTest, ConcurrentCalls) {
             }
             
             for (int j = 0; j < requests_per_client; ++j) {
-                Json::Value params;
-                params["client_id"] = i;
-                params["request_num"] = j;
-                params["message"] = "Hello from client " + std::to_string(i);
+                ConcurrentRequest req;
+                req.client_id = i;
+                req.request_num = j;
+                req.message = "Hello from client " + std::to_string(i);
                 
-                auto resp = client.call("echo", params, 3000);
+                ConcurrentResponse resp;
+                auto error = client.call("concurrent", req, resp, 3000);
                 
-                if (resp.success && 
-                    resp.result["client_id"].asInt() == i &&
-                    resp.result["request_num"].asInt() == j) {
+                if (!error.has_value() && 
+                    resp.client_id == i &&
+                    resp.request_num == j) {
                     success_count++;
+                } else {
+                    LOG_ERROR("Error Msg: {}", error.value());
                 }
                 
                 fiber::Fiber::sleep(50);
@@ -173,8 +223,8 @@ FIBER_MAIN() {
     
     // Start RPC server
     g_server = std::make_shared<RpcServer>();
-    g_server->registerMethod("echo", echoHandler);
-    g_server->registerMethod("add", addHandler);
+    g_server->registerHandler("echo", echoHandler);
+    g_server->registerHandler("add", addHandler);
     g_server->start(9090);
     
     fiber::Fiber::sleep(100);  // Wait for server to start
@@ -186,6 +236,8 @@ FIBER_MAIN() {
     LOG_INFO("=== RPC Tests Completed ===");
     
     fiber::Fiber::sleep(100);
+
+    g_server = nullptr;
     
     return result;
 }

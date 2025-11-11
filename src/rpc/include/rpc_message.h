@@ -13,30 +13,30 @@ namespace rpc {
 
 namespace rpc {
 
-// RPC请求消息
+// RPC请求消息 - 只持有序列化后的字符串
 struct RpcRequest {
-    uint64_t request_id;   // 请求ID（用于匹配响应）
-    std::string method;    // 方法名
-    Json::Value params;    // 参数（JSON格式）
+    uint64_t request_id;      // 请求ID（用于匹配响应）
+    std::string method;       // 方法名
+    std::string params_data;  // 序列化后的参数数据（字符串形式）
     
-    // 序列化为字符串
+    // 序列化为字符串（用于网络传输）
     std::string serialize() const;
     
-    // 从字符串反序列化
+    // 从字符串反序列化（用于网络接收）
     bool deserialize(const std::string& data);
 };
 
-// RPC响应消息
+// RPC响应消息 - 只持有序列化后的字符串
 struct RpcResponse {
-    uint64_t request_id;   // 对应的请求ID
-    bool success;          // 是否成功
-    Json::Value result;    // 返回结果
-    std::string error;     // 错误信息（如果失败）
+    uint64_t request_id;      // 对应的请求ID
+    bool success;             // 是否成功
+    std::string result_data;  // 序列化后的返回结果（字符串形式）
+    std::string error;        // 错误信息（如果失败）
     
-    // 序列化为字符串
+    // 序列化为字符串（用于网络传输）
     std::string serialize() const;
     
-    // 从字符串反序列化
+    // 从字符串反序列化（用于网络接收）
     bool deserialize(const std::string& data);
 };
 
@@ -48,51 +48,7 @@ struct RpcResponse {
 namespace rpc {
 
 // Serializer specializations for RpcRequest and RpcResponse
-template<>
-struct Serializer<RpcRequest> {
-    static Json::Value serialize(const RpcRequest& req) {
-        Json::Value json;
-        json["id"] = Json::UInt64(req.request_id);
-        json["method"] = req.method;
-        json["params"] = req.params;
-        return json;
-    }
-    
-    static RpcRequest deserialize(const Json::Value& json) {
-        RpcRequest req;
-        req.request_id = json["id"].asUInt64();
-        req.method = json["method"].asString();
-        req.params = json["params"];
-        return req;
-    }
-};
-
-template<>
-struct Serializer<RpcResponse> {
-    static Json::Value serialize(const RpcResponse& resp) {
-        Json::Value json;
-        json["id"] = Json::UInt64(resp.request_id);
-        json["success"] = resp.success;
-        if (resp.success) {
-            json["result"] = resp.result;
-        } else {
-            json["error"] = resp.error;
-        }
-        return json;
-    }
-    
-    static RpcResponse deserialize(const Json::Value& json) {
-        RpcResponse resp;
-        resp.request_id = json["id"].asUInt64();
-        resp.success = json["success"].asBool();
-        if (resp.success) {
-            resp.result = json["result"];
-        } else {
-            resp.error = json["error"].asString();
-        }
-        return resp;
-    }
-};
+// 这里的特化是不必要的，因为struct已经定义了偏特化
 
 // Implementation of serialization methods
 inline std::string RpcRequest::serialize() const {
