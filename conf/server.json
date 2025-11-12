@@ -1,6 +1,6 @@
 {
   "log": {
-    "visible_level": "debug",
+    "visible_level": "info",
     "async": true,
     "flush_interval": 3,
     "roll_size": 5000000,
