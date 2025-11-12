@@ -20,14 +20,19 @@ namespace rpc {
 // 前向声明 Encoder/Decoder
 class Encoder;
 class Decoder;
+class RpcServer;
 
 // RPC方法处理器类型：接收序列化的字符串参数，返回序列化的字符串结果
 // 处理器内部负责反序列化输入、调用业务逻辑、序列化输出
 using RpcHandler = std::function<std::string(const std::string& params_data)>;
+using RpcServerPtr = std::shared_ptr<RpcServer>;
 
-class RpcServer {
+class RpcServer: public std::enable_shared_from_this<RpcServer> {
 public:
-    RpcServer() : running_(false), listen_fd_(-1) {}
+
+    static RpcServerPtr Make() {
+        return std::shared_ptr<RpcServer>(new RpcServer);
+    }
     
     ~RpcServer() {
         shutdown();
@@ -91,23 +96,6 @@ public:
         });
     }
 
-private:
-    // 函数萃取traits（用于lambda推导类型）
-    template<typename T>
-    struct function_traits : public function_traits<decltype(&T::operator())> {};
-    
-    template<typename C, typename Ret, typename... Args>
-    struct function_traits<Ret(C::*)(Args...) const> {
-        using result_type = Ret;
-        using args = std::tuple<Args...>;
-    };
-    
-    // 内部注册方法（字符串 -> 字符串）
-    void registerMethod(const std::string& method, RpcHandler handler) {
-        handlers_[method] = std::move(handler);
-        LOG_INFO("RpcServer: registered method '{}'", method);
-    }
-
 public:
     
     // 监听端口 - 测试
@@ -144,12 +132,14 @@ public:
         //     registerToRegistry();
         // }
 
-        wg_.add(1);
-        // 启动accept循环
-        fiber::Fiber::go([this]() {
-            acceptLoop();
-            wg_.done();
-        });
+        try {
+            // 启动accept循环RpcServer: shutting down
+            fiber::Fiber::go([server = shared_from_this()]() {
+                server->acceptLoop();
+            });
+        } catch (std::bad_weak_ptr& e) {
+            LOG_ERROR("[Rpc_Server:start] bad_weak_ptr");
+        }
         
         return true;
     }
@@ -170,7 +160,7 @@ public:
             return;
         }
         
-        LOG_INFO("RpcServer: shutting down (port {})", port_);
+        LOG_DEBUG("RpcServer: shutting down (port {})", port_);
         running_ = false;
         
         // 关闭监听socket以中断acceptLoop
@@ -181,9 +171,6 @@ public:
         
         // 清理处理器
         handlers_.clear();
-
-        // 等待监听循环退出
-        wg_.wait();
     }
     
     bool isRunning() const {
@@ -191,6 +178,22 @@ public:
     }
 
 private:
+    RpcServer() : running_(false), listen_fd_(-1) {}
+    // 函数萃取traits（用于lambda推导类型）
+    template<typename T>
+    struct function_traits : public function_traits<decltype(&T::operator())> {};
+
+    template<typename C, typename Ret, typename... Args>
+    struct function_traits<Ret(C::*)(Args...) const> {
+        using result_type = Ret;
+        using args = std::tuple<Args...>;
+    };
+
+    // 内部注册方法（字符串 -> 字符串）
+    void registerMethod(const std::string& method, RpcHandler handler) {
+        handlers_[method] = std::move(handler);
+    }
+
     // 创建监听socket
     int createListenSocket(uint16_t port) {
         int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -245,18 +248,26 @@ private:
             
             // 为每个客户端启动一个fiber处理连接
             auto conn = std::make_shared<RpcConnection>(client_fd);
-            fiber::Fiber::go([this, conn]() {
-                handleConnection(conn);
-            });
+            try {
+                fiber::Fiber::go([server = shared_from_this(), conn]() {
+                    server->handleConnection(conn);
+                });
+            } catch (std::bad_weak_ptr& e) {
+                LOG_ERROR("[Rpc_Server:acceptLoop] bad_weak_ptr");
+            }
         }
         LOG_INFO("RpcServer: accept loop exited");
     }
     
     // 处理单个连接
     void handleConnection(RpcConnectionPtr conn) {
-        conn->receiveLoop([this, conn](const std::string& payload) {
-            handleRequest(conn, payload);
-        });
+        try {
+            conn->receiveLoop([server = shared_from_this(), conn](const std::string& payload) {
+                server->handleRequest(conn, payload);
+            });
+        } catch (std::bad_weak_ptr& e) {
+            LOG_ERROR("[Rpc_Server:handleConnection] bad_weak_ptr");
+        }
     }
     
     // 处理RPC请求
@@ -298,10 +309,9 @@ private:
 private:
     bool running_;
     int listen_fd_;
-    uint16_t port_;
+    uint16_t port_{};
     ServerConfig config_;  // 服务器配置（新增，用于生产模式）
     std::unordered_map<std::string, RpcHandler> handlers_;
-    fiber::WaitGroup wg_;
 };
 
 } // namespace rpc

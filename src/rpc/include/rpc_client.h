@@ -15,11 +15,17 @@
 
 namespace rpc {
 
+class RpcClient;
+using RpcClientPtr = std::shared_ptr<RpcClient>;
+
 // RPC客户端
-class RpcClient {
+class RpcClient: public std::enable_shared_from_this<RpcClient> {
 public:
-    RpcClient() : next_request_id_(1), connected_(false) {}
-    
+
+    static RpcClientPtr Make() {
+        return std::shared_ptr<RpcClient>(new RpcClient);
+    }
+
     ~RpcClient() {
         disconnect();
     }
@@ -52,10 +58,10 @@ public:
         connected_ = true;
         
         LOG_INFO("RpcClient: connected to {}:{}", host, port);
-        
+
         // 启动接收循环
-        fiber::Fiber::go([this]() {
-            receiveLoop();
+        fiber::Fiber::go([client = shared_from_this()]() {
+            client->receiveLoop();
         });
         
         return true;
@@ -81,8 +87,8 @@ public:
             std::lock_guard<fiber::FiberMutex> lock(pending_mutex_);
             pending_requests_.clear();
         }
-        
-        LOG_INFO("RpcClient: disconnected fd:{}", conn_fd);
+
+        LOG_DEBUG("RpcClient: disconnected fd:{}", conn_fd);
     }
     
     // 模板化的类型安全RPC调用 - 这是主要接口
@@ -147,10 +153,12 @@ public:
     }
 
 private:
+    RpcClient() : next_request_id_(1), connected_(false) {}
+
     // 接收循环
     void receiveLoop() {
-        conn_->receiveLoop([this](const std::string& payload) {
-            handleResponse(payload);
+        conn_->receiveLoop([client = shared_from_this()](const std::string& payload) {
+            client->handleResponse(payload);
         });
     }
     

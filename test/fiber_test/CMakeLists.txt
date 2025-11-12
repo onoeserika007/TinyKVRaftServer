@@ -1,3 +1,7 @@
+# Fiber vs Thread IO 性能对比测试
+add_executable(fiber_vs_thread_io_test fiber_vs_thread_io_test.cpp)
+target_link_libraries(fiber_vs_thread_io_test fiber_lib gtest gtest_main pthread)
+target_include_directories(fiber_vs_thread_io_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_executable(fiber_test basic_fiber_test.cpp)
 target_link_libraries(fiber_test fiber_lib)
 target_include_directories(fiber_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
