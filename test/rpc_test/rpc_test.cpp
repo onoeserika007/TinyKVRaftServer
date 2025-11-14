@@ -51,7 +51,8 @@ TEST(RpcTest, EchoMethod) {
     bool test_passed = false;
     
     fiber::Fiber::go([&]() {
-        RpcClient client;
+        auto client_ptr = RpcClient::Make();
+        RpcClient& client = *client_ptr;
         ASSERT_TRUE(client.connect("127.0.0.1", 9090));
         
         EchoRequest req;
@@ -83,7 +84,8 @@ TEST(RpcTest, AddMethod) {
     bool test_passed = false;
     
     fiber::Fiber::go([&]() {
-        RpcClient client;
+        auto client_ptr = RpcClient::Make();
+        RpcClient& client = *client_ptr;
         ASSERT_TRUE(client.connect("127.0.0.1", 9090));
         
         AddRequest req;
@@ -114,7 +116,8 @@ TEST(RpcTest, UnknownMethod) {
     bool test_passed = false;
     
     fiber::Fiber::go([&]() {
-        RpcClient client;
+        auto client_ptr = RpcClient::Make();
+        RpcClient& client = *client_ptr;
         ASSERT_TRUE(client.connect("127.0.0.1", 9090));
         
         EchoRequest req;
@@ -176,7 +179,8 @@ TEST(RpcTest, ConcurrentCalls) {
     
     for (int i = 0; i < num_clients; ++i) {
         fiber::Fiber::go([i, &success_count, &completed, &wg]() {
-            RpcClient client;
+            auto client_ptr = RpcClient::Make();
+            RpcClient& client = *client_ptr;
             
             if (!client.connect("127.0.0.1", 9090)) {
                 completed++;
@@ -222,7 +226,7 @@ FIBER_MAIN() {
     LOG_INFO("=== Starting RPC Tests ===");
     
     // Start RPC server
-    g_server = std::make_shared<RpcServer>();
+    g_server = RpcServer::Make();
     g_server->registerHandler("echo", echoHandler);
     g_server->registerHandler("add", addHandler);
     g_server->start(9090);

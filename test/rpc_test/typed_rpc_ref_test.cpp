@@ -190,17 +190,18 @@ void setupServer(rpc::RpcServer& server) {
 // ============================================================================
 
 void testTypedRpcWithRefOutput() {
-    rpc::RpcServer server;
-    setupServer(server);
+    auto server = rpc::RpcServer::Make();
+    setupServer(*server);
     
-    server.start(9095);
+    server->start(9095);
     LOG_INFO("=== Typed RPC Server (with ref output) started on port 9095 ===");
     
     fiber::WaitGroup wg;
     wg.add(1);
     
     fiber::Fiber::go([&wg]() {
-        rpc::RpcClient client;
+        auto client_ptr = rpc::RpcClient::Make();
+        auto& client = *client_ptr;
         
         if (!client.connect("127.0.0.1", 9095)) {
             LOG_ERROR("Client: failed to connect");
