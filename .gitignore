@@ -6,6 +6,7 @@ bin
 lib
 docs
 TODO
+reference
 
 # 日志文件
 *.log
