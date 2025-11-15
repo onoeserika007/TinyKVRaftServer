@@ -15,7 +15,7 @@
 using namespace fiber;
 
 
-constexpr int TASK_COUNT = 500;
+constexpr int TASK_COUNT = 2000;
 constexpr int DATA_SIZE = 1024; // 1KB
 
 #include "io_manager.h"
@@ -69,19 +69,19 @@ TEST(FiberVsThreadCPU, ComputePerformance) {
 
 void fiber_reader(int fd, std::atomic<int>& done) {
     char buf[DATA_SIZE] = {0};
-    // LOG_INFO("fd:{} reading", fd);
+    LOG_INFO("fd:{} reading", fd);
     auto result = fiber::IO::read(fd, buf, DATA_SIZE); // 非阻塞协程IO
     auto rd_cnt = read_count.fetch_add(1) + 1;
-    // LOG_INFO("fd:{} has read, read count {}", fd, rd_cnt);
+    LOG_INFO("fd:{} has read, read count {}", fd, rd_cnt);
     if (result.value_or(0) == DATA_SIZE) done++;
     fiber::IO::close(fd);
 }
 
 void fiber_writer(int fd, const char* buf) {
-    // LOG_INFO("fd:{} writing", fd);
+    LOG_INFO("fd:{} writing", fd);
     fiber::IO::write(fd, buf, DATA_SIZE);
     auto wt_cnt = write_count.fetch_add(1) + 1;
-    // LOG_INFO("fd:{} has write, write count {}", fd - 1, wt_cnt);
+    LOG_INFO("fd:{} has write, write count {}", fd - 1, wt_cnt);
     fiber::IO::close(fd);
 }
 
@@ -108,20 +108,29 @@ TEST(FiberVsThreadIO, SocketPairBlockingPerformance) {
             fiber_fds.emplace_back(sv[0], sv[1]);
         }
     }
+
+    WaitGroup wg;
+    wg.add(TASK_COUNT);
     // 先启动所有读worker（阻塞在read）
     for (auto& p : fiber_fds) {
-        Fiber::go([fd=p.first, &fiber_done]() { fiber_reader(fd, fiber_done); });
+        Fiber::go([fd=p.first, &fiber_done, &wg]() {
+            fiber_reader(fd, fiber_done);
+            // LOG_INFO("Task Doing for {}", fd);
+            wg.done();
+            // LOG_INFO("Task Done for {}", fd);
+        });
     }
     Fiber::sleep(10); // 确保所有reader已阻塞
     auto fiber_start = std::chrono::steady_clock::now();
     // 统一写入
     LOG_INFO("// ============================= START WRITE ================================= //");
+
     for (auto& p : fiber_fds) {
-        Fiber::go([fd=p.second, buf]() { fiber_writer(fd, buf); });
+        Fiber::go([fd=p.second, buf]() {
+            fiber_writer(fd, buf);
+        });
     }
-    while (fiber_done.load() < TASK_COUNT) {
-        Fiber::sleep(1);
-    }
+    wg.wait();
     auto fiber_end = std::chrono::steady_clock::now();
     auto fiber_duration = std::chrono::duration_cast<std::chrono::milliseconds>(fiber_end - fiber_start).count();
     LOG_INFO("Fiber socketpair blocking IO: {} tasks, total time: {} ms", TASK_COUNT, fiber_duration);
@@ -171,7 +180,7 @@ void thread_io_task(int ms) {
 
 TEST(FiberVsThreadIO, ComparePerformance) {
     const int task_count = 1000;
-    const int io_ms = 200;
+    const int io_ms = 10;
     const int thread_pool_size = std::thread::hardware_concurrency();
 
     // Fiber并发测试
@@ -212,6 +221,6 @@ TEST(FiberVsThreadIO, ComparePerformance) {
 }
 
 FIBER_MAIN() {
-    testing::InitGoogleTest();
+    testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

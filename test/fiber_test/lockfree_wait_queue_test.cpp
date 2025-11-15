@@ -11,7 +11,7 @@ void test_lockfree_wait_queue() {
     std::cout << "Testing Lock-Free WaitQueue..." << std::endl;
     
     WaitQueue wait_queue;
-    std::cout << "Initial empty: " << wait_queue.empty() << std::endl;
+    // std::cout << "Initial empty: " << wait_queue.empty() << std::endl;
     
     // 测试基本的push/pop操作（不依赖复杂的协程调度）
     // 模拟协程等待和唤醒的场景
@@ -91,7 +91,7 @@ void test_lockfree_wait_queue() {
     wg.wait();
     
     std::cout << "Final notification count: " << notification_count.load() << std::endl;
-    std::cout << "Final empty: " << wait_queue.empty() << std::endl;
+    // std::cout << "Final empty: " << wait_queue.empty() << std::endl;
     
     std::cout << "✓ Lock-Free WaitQueue test completed" << std::endl;
 }

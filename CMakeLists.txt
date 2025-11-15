@@ -10,6 +10,8 @@ project(TinyKVRaftServer)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer -O0 -g")
+#set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
 
 # 设置项目库文件搜索路径 -L
 link_directories(${PROJECT_SOURCE_DIR}/lib)
@@ -18,6 +20,7 @@ link_directories(${PROJECT_SOURCE_DIR}/lib)
 add_subdirectory(third_party/basic_libs)
 add_subdirectory(third_party/pfr)
 add_subdirectory(third_party/fiber_lib)
+add_subdirectory(third_party/concurrentqueue)
 
 # src
 add_subdirectory(src/rpc)
